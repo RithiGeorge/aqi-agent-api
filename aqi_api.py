@@ -4,6 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+import matplotlib.pyplot as plt
+import io
+import base64
+from fastapi.responses import JSONResponse
+
 app = FastAPI()
 
 model = joblib.load("xgb_aqi_model.pkl")
@@ -61,4 +66,21 @@ def predict(city: str):
 
     except Exception as e:
         return {"error": str(e)}
+# Get last 7 days AQI for chart
+weekly_data = df_city.tail(7)
+
+plt.figure(figsize=(6,4))
+plt.plot(weekly_data["Date"], weekly_data["AQI"], marker='o')
+plt.xticks(rotation=45)
+plt.title(f"Weekly AQI Trend - {city}")
+plt.tight_layout()
+
+# Save to buffer
+buf = io.BytesIO()
+plt.savefig(buf, format="png")
+buf.seek(0)
+
+# Convert to base64
+chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+plt.close()
 
