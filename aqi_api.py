@@ -3,30 +3,30 @@ import joblib
 import pandas as pd
 import numpy as np
 from datetime import datetime
-
+import matplotlib
+matplotlib.use("Agg")  # Required for cloud servers like Render
 import matplotlib.pyplot as plt
 import io
 import base64
-from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
+# Load model once at startup
 model = joblib.load("xgb_aqi_model.pkl")
 
 @app.get("/")
 def home():
     return {"message": "AQI Prediction API Running"}
 
-
 @app.get("/predict")
 def predict(city: str):
 
     try:
+        # Load historical data
         df = pd.read_csv("historical_data.csv")
-
         df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
 
-        # Filter by city
+        # Filter city
         df_city = df[df["City"] == city].copy()
 
         if len(df_city) < 30:
@@ -34,7 +34,7 @@ def predict(city: str):
 
         df_city = df_city.sort_values("Date")
 
-        # Recreate lag features
+        # -------- Feature Engineering --------
         for lag in [1,2,3,7,14,30]:
             df_city[f"AQI_lag{lag}"] = df_city["AQI"].shift(lag)
 
@@ -54,33 +54,54 @@ def predict(city: str):
         features = [col for col in df_city.columns if "lag" in col or "roll" in col] + ["Month","DayOfWeek"]
 
         last_row = df_city.iloc[-1]
-
         X_input = np.array([last_row[features]])
 
         prediction = model.predict(X_input)
+        predicted_value = float(prediction[0])
+
+        # -------- Create Professional Weekly Chart --------
+        weekly_data = df_city.tail(7)
+
+        plt.style.use("seaborn-v0_8-darkgrid")
+        fig, ax = plt.subplots(figsize=(8,5))
+
+        ax.plot(
+            weekly_data["Date"],
+            weekly_data["AQI"],
+            marker="o",
+            linewidth=3,
+            markersize=8
+        )
+
+        ax.set_title(f"Weekly AQI Trend - {city}", fontsize=16, weight="bold")
+        ax.set_xlabel("Date", fontsize=12)
+        ax.set_ylabel("AQI Level", fontsize=12)
+
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(True, linestyle="--", alpha=0.6)
+
+        # Add AQI category color zones
+        ax.axhspan(0, 50, alpha=0.1)
+        ax.axhspan(51, 100, alpha=0.1)
+        ax.axhspan(101, 200, alpha=0.1)
+        ax.axhspan(201, 300, alpha=0.1)
+        ax.axhspan(301, 500, alpha=0.1)
+
+        plt.tight_layout()
+
+        # Convert to Base64
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=150)
+        buf.seek(0)
+        chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
+        plt.close()
 
         return {
             "city": city,
-            "predicted_next_aqi": float(prediction[0])
+            "date": str(datetime.today().date()),
+            "predicted_next_aqi": round(predicted_value, 2),
+            "weekly_chart": chart_base64
         }
 
     except Exception as e:
         return {"error": str(e)}
-# Get last 7 days AQI for chart
-weekly_data = df_city.tail(7)
-
-plt.figure(figsize=(6,4))
-plt.plot(weekly_data["Date"], weekly_data["AQI"], marker='o')
-plt.xticks(rotation=45)
-plt.title(f"Weekly AQI Trend - {city}")
-plt.tight_layout()
-
-# Save to buffer
-buf = io.BytesIO()
-plt.savefig(buf, format="png")
-buf.seek(0)
-
-# Convert to base64
-chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
-plt.close()
-
