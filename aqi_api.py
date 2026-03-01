@@ -24,7 +24,21 @@ def predict():
     try:
         # Load historical data
         df = pd.read_csv("historical_data.csv")
-        df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
+
+        # Clean column names
+        df.columns = df.columns.str.strip()
+
+        # Convert date
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce", dayfirst=True)
+
+        # 🔥 FORCE NUMERIC CONVERSION
+        df["AQI"] = pd.to_numeric(df["AQI"], errors="coerce")
+        df["PM2.5"] = pd.to_numeric(df["PM2.5"], errors="coerce")
+        df["PM10"] = pd.to_numeric(df["PM10"], errors="coerce")
+
+        # Drop rows where AQI is missing
+        df = df.dropna(subset=["AQI"])
+      
 
         # Filter city
         df_city = df.copy()
