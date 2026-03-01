@@ -91,7 +91,7 @@ def predict(city: str):
 
         # Convert to Base64
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=150)
+        plt.savefig(buf, format="png", dpi=100)        
         buf.seek(0)
         chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
         plt.close()
