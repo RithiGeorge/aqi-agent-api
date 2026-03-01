@@ -11,46 +11,37 @@ import base64
 
 app = FastAPI()
 
-# Load model once at startup
+# Load trained model
 model = joblib.load("xgb_aqi_model.pkl")
 
 
 @app.get("/")
 def home():
-    return {"message": "AQI Prediction API Running - Updated Version"}
+    return {"message": "AQI Prediction API Running - Stable Version"}
 
 
 @app.get("/predict")
 def predict():
     try:
-        # -------------------------------
-        # Load historical data
-        # -------------------------------
+        # -------------------------
+        # Load Data
+        # -------------------------
         df = pd.read_csv("historical_data.csv")
 
-        # Clean column names
         df.columns = df.columns.str.strip()
 
-        # Convert Date
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce", dayfirst=True)
 
-        # Force numeric conversion (VERY IMPORTANT)
         df["AQI"] = pd.to_numeric(df["AQI"], errors="coerce")
         df["PM2.5"] = pd.to_numeric(df["PM2.5"], errors="coerce")
         df["PM10"] = pd.to_numeric(df["PM10"], errors="coerce")
 
-        # Drop rows where AQI is missing
-        df = df.dropna(subset=["AQI"])
-
-        if len(df) < 35:
-            return {"error": "Not enough historical data in dataset"}
-
-        # Sort by date
+        df = df.dropna(subset=["Date", "AQI"])
         df = df.sort_values("Date")
 
-        # -------------------------------
+        # -------------------------
         # Feature Engineering
-        # -------------------------------
+        # -------------------------
 
         for lag in [1, 2, 3, 7, 14, 30]:
             df[f"AQI_lag{lag}"] = df["AQI"].shift(lag)
@@ -66,15 +57,16 @@ def predict():
         df["Month"] = df["Date"].dt.month
         df["DayOfWeek"] = df["Date"].dt.dayofweek
 
-        # Drop NaN rows created by lag/rolling
+        # Drop rows created by lag/rolling
         df = df.dropna()
 
-        if len(df) == 0:
-            return {"error": "Not enough usable data after feature engineering"}
+        # 🔥 Only check AFTER feature engineering
+        if df.empty:
+            return {"error": "Not enough usable data to compute features. Need more historical records."}
 
-        # -------------------------------
-        # Prediction
-        # -------------------------------
+        # -------------------------
+        # Prepare Model Input
+        # -------------------------
 
         features = [col for col in df.columns if "lag" in col or "roll" in col] + ["Month", "DayOfWeek"]
 
@@ -84,9 +76,9 @@ def predict():
         prediction = model.predict(X_input)
         predicted_value = float(prediction[0])
 
-        # -------------------------------
+        # -------------------------
         # Weekly Chart
-        # -------------------------------
+        # -------------------------
 
         weekly_data = df.tail(7)
 
@@ -102,8 +94,8 @@ def predict():
         )
 
         ax.set_title("Weekly AQI Trend - Bengaluru", fontsize=16, weight="bold")
-        ax.set_xlabel("Date", fontsize=12)
-        ax.set_ylabel("AQI Level", fontsize=12)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("AQI Level")
 
         ax.set_xticks(weekly_data["Date"])
         ax.set_xticklabels(
@@ -111,7 +103,6 @@ def predict():
             rotation=45
         )
 
-        # AQI category background zones
         ax.axhspan(0, 50, color="#2ecc71", alpha=0.08)
         ax.axhspan(51, 100, color="#27ae60", alpha=0.08)
         ax.axhspan(101, 200, color="#f39c12", alpha=0.08)
@@ -123,15 +114,15 @@ def predict():
         plt.tight_layout()
 
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=120)  # reduced DPI for email reliability
+        plt.savefig(buf, format="png", dpi=110)
         buf.seek(0)
 
         chart_base64 = base64.b64encode(buf.read()).decode("utf-8")
         plt.close(fig)
 
-        # -------------------------------
-        # Return Response
-        # -------------------------------
+        # -------------------------
+        # Response
+        # -------------------------
 
         return {
             "city": "Bengaluru",
