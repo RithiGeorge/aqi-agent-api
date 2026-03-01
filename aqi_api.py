@@ -19,7 +19,7 @@ def home():
     return {"message": "AQI Prediction API Running"}
 
 @app.get("/predict")
-def predict(city: str):
+def predict():
 
     try:
         # Load historical data
@@ -27,7 +27,7 @@ def predict(city: str):
         df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
 
         # Filter city
-        df_city = df[df["City"] == city].copy()
+        df_city = df.copy()
 
         if len(df_city) < 30:
             return {"error": "Not enough historical data for this city"}
@@ -97,7 +97,7 @@ def predict(city: str):
         plt.close()
 
         return {
-            "city": city,
+            "city": Bengaluru,
             "date": str(datetime.today().date()),
             "predicted_next_aqi": round(predicted_value, 2),
             "weekly_chart": chart_base64
